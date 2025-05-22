@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>오늘 뭐 먹지?</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Arial&display=swap" />
+  <style>
+    body { font-family: Arial, sans-serif; background: #fafafa; padding: 20px; }
+    h1 { text-align: center; }
+    .container { max-width: 600px; margin: auto; }
+    input, select, button { width: 100%; margin: 8px 0; padding: 10px; border-radius: 6px; border: 1px solid #ccc; }
+    button { background-color: #f97316; color: white; font-weight: bold; box-shadow: 0 4px #d65a00; }
+    button:active { transform: translateY(2px); box-shadow: 0 2px #b94700; }
+    .result-card { background: #fff; padding: 15px; margin-top: 16px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+    .highlight { font-weight: bold; color: #f97316; }
+    .actions button { width: 48%; margin-top: 5px; background: #eee; color: #333; }
+    .actions { display: flex; justify-content: space-between; }
+    #ingredientList { background: #fff; padding: 10px; border-radius: 6px; min-height: 40px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>오늘 뭐 먹지?</h1>
+    <input id="ingredientInput" placeholder="예: 돼지고기" />
+    <div style="display:flex; gap:10px;">
+      <button onclick="addIngredient()">재료 추가</button>
+      <button onclick="resetIngredients()">초기화</button>
+    </div>
+    <div id="ingredientList"></div>
+    <select id="mealType">
+      <option value="">식사 유형</option>
+      <option>아침</option><option>점심</option><option>저녁</option>
+      <option>간식</option><option>야식</option><option>술안주</option><option>도시락</option>
+    </select>
+    <select id="dietType">
+      <option value="">식단 유형</option>
+      <option>일반식</option><option>건강식</option><option>다이어트식</option><option>채식</option>
+    </select>
+    <select id="cookMethod">
+      <option value="">조리 방법 (선택없으면 랜덤)</option>
+      <option>볶기</option><option>끓이기</option><option>찜</option><option>무침</option><option>굽기</option>
+    </select>
+    <button onclick="generateMenu()">추천하기</button>
+    <button onclick="clearResult()">다시 추천받기</button>
+    <div id="result"></div>
+
+    <h3>날짜별 메뉴 기록</h3>
+    <input type="date" id="dateSelector" onchange="loadSavedMenu()" />
+    <div id="savedMenuDisplay"></div>
+
+    <h3>주간 식단 요약</h3>
+    <button onclick="loadWeeklySummary()">이번 주 요약 보기</button>
+    <div id="weeklySummary"></div>
+  </div>
+
+  <script>
+    let ingredients = [], recipeDB = [];
+
+    async function loadRecipes() {
+      const res = await fetch("public_recipes_2000_tagged.json");
+      recipeDB = await res.json();
+    }
+
+    function addIngredient() {
+      const input = document.getElementById('ingredientInput');
+      if (input.value.trim()) {
+        ingredients.push(input.value.trim());
+        input.value = '';
+        document.getElementById('ingredientList').innerText = ingredients.join(', ');
+      }
+    }
+
+    function resetIngredients() {
+      ingredients = [];
+      document.getElementById('ingredientList').innerText = '';
+    }
+
+    function clearResult() {
+      document.getElementById('result').innerHTML = '';
+    }
+
+    function generateMenu() {
+      const meal = document.getElementById('mealType').value;
+      const diet = document.getElementById('dietType').value;
+      const method = document.getElementById('cookMethod').value;
+      if (!ingredients.length || !meal || !diet) return alert('모든 항목을 입력하세요.');
+
+      let candidates = recipeDB.filter(r =>
+        r.mealType === meal &&
+        r.dietType === diet &&
+        (!method || r.method === method) &&
+        r.ingredients.some(i => ingredients.includes(i))
+      ).map(r => ({
+        ...r,
+        matchScore: r.ingredients.filter(i => ingredients.includes(i)).length
+      }))
+      .sort((a,b) => b.matchScore - a.matchScore)
+      .slice(0,3);
+
+      const result = document.getElementById('result');
+      result.innerHTML = candidates.length
+        ? candidates.map(c => `
+          <div class="result-card">
+            <strong>${c.menu}</strong><br>
+            <div>사용된 재료: ${c.ingredients.map(i => ingredients.includes(i) ? `<span class="highlight">${i}</span>` : i).join(', ')}</div>
+            <div>일치 재료 수: ${c.matchScore}</div>
+            <div>칼로리: ${c.kcal} kcal</div>
+            <div class="actions">
+              <button onclick="copyMenu('${c.menu}')">복사</button>
+              <button onclick="saveMenu('${c.menu}', ${c.kcal})">저장</button>
+            </div>
+          </div>`).join('')
+        : '<p>조건에 맞는 메뉴를 찾을 수 없습니다.</p>';
+    }
+
+    function copyMenu(text) {
+      navigator.clipboard.writeText(text);
+      alert('복사되었습니다.');
+    }
+
+    function saveMenu(text, kcal) {
+      const d = new Date().toISOString().split("T")[0];
+      localStorage.setItem(`menu_${d}`, text);
+      localStorage.setItem(`kcal_${d}`, kcal);
+      alert('저장되었습니다.');
+    }
+
+    function loadSavedMenu() {
+      const d = document.getElementById('dateSelector').value;
+      const menu = localStorage.getItem(`menu_${d}`);
+      document.getElementById('savedMenuDisplay').innerHTML =
+        menu ? `<p><strong>${d}</strong>: ${menu}</p>` : `<p>${d} 저장된 메뉴 없음</p>`;
+    }
+
+    function loadWeeklySummary() {
+      const div = document.getElementById('weeklySummary');
+      div.innerHTML = '';
+      const now = new Date();
+      const start = new Date(now);
+      start.setDate(now.getDate() - now.getDay());
+      let total = 0, count = 0;
+      let html = '';
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(start);
+        d.setDate(start.getDate() + i);
+        const k = d.toISOString().split("T")[0];
+        const m = localStorage.getItem(`menu_${k}`);
+        const c = parseInt(localStorage.getItem(`kcal_${k}`)) || 0;
+        if (m) {
+          html += `<p>${k}: ${m} (${c} kcal)</p>`;
+          total += c; count++;
+        }
+      }
+      html += `<hr><p><strong>총 칼로리:</strong> ${total} kcal<br><strong>평균:</strong> ${count ? Math.round(total / count) : 0} kcal</p>`;
+      div.innerHTML = html || '<p>이번 주 기록 없음</p>';
+    }
+
+    loadRecipes();
+  </script>
+</body>
+</html>
