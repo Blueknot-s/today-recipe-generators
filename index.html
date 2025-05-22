@@ -16,12 +16,12 @@
     .highlight { font-weight: bold; color: #f97316; }
     .actions button { width: 48%; margin-top: 5px; background: #eee; color: #333; }
     .actions { display: flex; justify-content: space-between; }
-    #ingredientList { background: #fff; padding: 10px; border-radius: 6px; min-height: 40px; }
+    #ingredientList span { background: #f1f1f1; margin: 2px; padding: 6px 10px; border-radius: 20px; display: inline-block; cursor: pointer; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>오늘 뭐 먹지?</h1>
+    <h1>🍽️ 오늘 뭐 먹지?</h1>
     <input id="ingredientInput" placeholder="예: 돼지고기" />
     <div style="display:flex; gap:10px;">
       <button onclick="addIngredient()">재료 추가</button>
@@ -45,11 +45,11 @@
     <button onclick="clearResult()">다시 추천받기</button>
     <div id="result"></div>
 
-    <h3>날짜별 메뉴 기록</h3>
+    <h3>🗓️ 날짜별 메뉴 기록</h3>
     <input type="date" id="dateSelector" onchange="loadSavedMenu()" />
     <div id="savedMenuDisplay"></div>
 
-    <h3>주간 식단 요약</h3>
+    <h3>📊 주간 식단 요약</h3>
     <button onclick="loadWeeklySummary()">이번 주 요약 보기</button>
     <div id="weeklySummary"></div>
   </div>
@@ -58,22 +58,33 @@
     let ingredients = [], recipeDB = [];
 
     async function loadRecipes() {
-      const res = await fetch("public_recipes_2000_tagged.json");
+      const res = await fetch("https://today-recipe-generators.vercel.app/public_recipes_2000_tagged.json");
       recipeDB = await res.json();
     }
 
     function addIngredient() {
       const input = document.getElementById('ingredientInput');
-      if (input.value.trim()) {
-        ingredients.push(input.value.trim());
+      const value = input.value.trim();
+      if (value && !ingredients.includes(value)) {
+        ingredients.push(value);
         input.value = '';
-        document.getElementById('ingredientList').innerText = ingredients.join(', ');
+        renderIngredients();
       }
     }
 
     function resetIngredients() {
       ingredients = [];
-      document.getElementById('ingredientList').innerText = '';
+      renderIngredients();
+    }
+
+    function renderIngredients() {
+      const container = document.getElementById('ingredientList');
+      container.innerHTML = ingredients.map(i => `<span onclick="removeIngredient('${i}')">${i} ✕</span>`).join(' ');
+    }
+
+    function removeIngredient(name) {
+      ingredients = ingredients.filter(i => i !== name);
+      renderIngredients();
     }
 
     function clearResult() {
@@ -84,11 +95,11 @@
       const meal = document.getElementById('mealType').value;
       const diet = document.getElementById('dietType').value;
       const method = document.getElementById('cookMethod').value;
-      if (!ingredients.length || !meal || !diet) return alert('모든 항목을 입력하세요.');
+      if (!ingredients.length) return alert('재료를 하나 이상 입력하세요.');
 
       let candidates = recipeDB.filter(r =>
-        r.mealType === meal &&
-        r.dietType === diet &&
+        (!meal || r.mealType === meal) &&
+        (!diet || r.dietType === diet) &&
         (!method || r.method === method) &&
         r.ingredients.some(i => ingredients.includes(i))
       ).map(r => ({
@@ -111,7 +122,7 @@
               <button onclick="saveMenu('${c.menu}', ${c.kcal})">저장</button>
             </div>
           </div>`).join('')
-        : '<p>조건에 맞는 메뉴를 찾을 수 없습니다.</p>';
+        : '<p>조건에 맞는 메뉴를 찾을 수 없습니다.<br>조건을 완화하거나 다시 시도해 보세요.</p>';
     }
 
     function copyMenu(text) {
