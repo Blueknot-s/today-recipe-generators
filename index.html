@@ -16,12 +16,12 @@
     .highlight { font-weight: bold; color: #f97316; }
     .actions button { width: 48%; margin-top: 5px; background: #eee; color: #333; }
     .actions { display: flex; justify-content: space-between; }
-    #ingredientList span { background: #f1f1f1; margin: 2px; padding: 6px 10px; border-radius: 20px; display: inline-block; cursor: pointer; }
+    #ingredientList { background: #fff; padding: 10px; border-radius: 6px; min-height: 40px; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>🍽️ 오늘 뭐 먹지?</h1>
+    <h1>오늘 뭐 먹지?</h1>
     <input id="ingredientInput" placeholder="예: 돼지고기" />
     <div style="display:flex; gap:10px;">
       <button onclick="addIngredient()">재료 추가</button>
@@ -44,47 +44,41 @@
     <button onclick="generateMenu()">추천하기</button>
     <button onclick="clearResult()">다시 추천받기</button>
     <div id="result"></div>
-
-    <h3>🗓️ 날짜별 메뉴 기록</h3>
-    <input type="date" id="dateSelector" onchange="loadSavedMenu()" />
-    <div id="savedMenuDisplay"></div>
-
-    <h3>📊 주간 식단 요약</h3>
-    <button onclick="loadWeeklySummary()">이번 주 요약 보기</button>
-    <div id="weeklySummary"></div>
   </div>
 
   <script>
-    let ingredients = [], recipeDB = [];
+    let ingredients = [], recipeDB = {}, placeholderDB = {};
 
     async function loadRecipes() {
-      const res = await fetch("https://today-recipe-generators.vercel.app/public_recipes_2000_tagged.json");
-      recipeDB = await res.json();
+      try {
+        const real = await fetch("/realistic_korean_recipes_500.json");
+        const realData = await real.json();
+        recipeDB = realData;
+
+        // 예시로 placeholder 로컬 객체 구성 (추후 분리 가능)
+        placeholderDB = {
+          "레시피 안내": {
+            message: "이 메뉴는 등록된 상세 레시피가 없습니다. 포털 검색 또는 블로그를 참고해 주세요.",
+            external: "https://search.naver.com/search.naver?query=한식레시피"
+          }
+        };
+      } catch (e) {
+        alert("레시피 데이터를 불러오는 데 실패했습니다.");
+      }
     }
 
     function addIngredient() {
       const input = document.getElementById('ingredientInput');
-      const value = input.value.trim();
-      if (value && !ingredients.includes(value)) {
-        ingredients.push(value);
+      if (input.value.trim()) {
+        ingredients.push(input.value.trim());
         input.value = '';
-        renderIngredients();
+        document.getElementById('ingredientList').innerText = ingredients.join(', ');
       }
     }
 
     function resetIngredients() {
       ingredients = [];
-      renderIngredients();
-    }
-
-    function renderIngredients() {
-      const container = document.getElementById('ingredientList');
-      container.innerHTML = ingredients.map(i => `<span onclick="removeIngredient('${i}')">${i} ✕</span>`).join(' ');
-    }
-
-    function removeIngredient(name) {
-      ingredients = ingredients.filter(i => i !== name);
-      renderIngredients();
+      document.getElementById('ingredientList').innerText = '';
     }
 
     function clearResult() {
@@ -92,79 +86,37 @@
     }
 
     function generateMenu() {
-      const meal = document.getElementById('mealType').value;
-      const diet = document.getElementById('dietType').value;
-      const method = document.getElementById('cookMethod').value;
-      if (!ingredients.length) return alert('재료를 하나 이상 입력하세요.');
-
-      let candidates = recipeDB.filter(r =>
-        (!meal || r.mealType === meal) &&
-        (!diet || r.dietType === diet) &&
-        (!method || r.method === method) &&
-        r.ingredients.some(i => ingredients.includes(i))
-      ).map(r => ({
-        ...r,
-        matchScore: r.ingredients.filter(i => ingredients.includes(i)).length
-      }))
-      .sort((a,b) => b.matchScore - a.matchScore)
-      .slice(0,3);
-
-      const result = document.getElementById('result');
-      result.innerHTML = candidates.length
-        ? candidates.map(c => `
-          <div class="result-card">
-            <strong>${c.menu}</strong><br>
-            <div>사용된 재료: ${c.ingredients.map(i => ingredients.includes(i) ? `<span class="highlight">${i}</span>` : i).join(', ')}</div>
-            <div>일치 재료 수: ${c.matchScore}</div>
-            <div>칼로리: ${c.kcal} kcal</div>
-            <div class="actions">
-              <button onclick="copyMenu('${c.menu}')">복사</button>
-              <button onclick="saveMenu('${c.menu}', ${c.kcal})">저장</button>
-            </div>
-          </div>`).join('')
-        : '<p>조건에 맞는 메뉴를 찾을 수 없습니다.<br>조건을 완화하거나 다시 시도해 보세요.</p>';
-    }
-
-    function copyMenu(text) {
-      navigator.clipboard.writeText(text);
-      alert('복사되었습니다.');
-    }
-
-    function saveMenu(text, kcal) {
-      const d = new Date().toISOString().split("T")[0];
-      localStorage.setItem(`menu_${d}`, text);
-      localStorage.setItem(`kcal_${d}`, kcal);
-      alert('저장되었습니다.');
-    }
-
-    function loadSavedMenu() {
-      const d = document.getElementById('dateSelector').value;
-      const menu = localStorage.getItem(`menu_${d}`);
-      document.getElementById('savedMenuDisplay').innerHTML =
-        menu ? `<p><strong>${d}</strong>: ${menu}</p>` : `<p>${d} 저장된 메뉴 없음</p>`;
-    }
-
-    function loadWeeklySummary() {
-      const div = document.getElementById('weeklySummary');
-      div.innerHTML = '';
-      const now = new Date();
-      const start = new Date(now);
-      start.setDate(now.getDate() - now.getDay());
-      let total = 0, count = 0;
-      let html = '';
-      for (let i = 0; i < 7; i++) {
-        const d = new Date(start);
-        d.setDate(start.getDate() + i);
-        const k = d.toISOString().split("T")[0];
-        const m = localStorage.getItem(`menu_${k}`);
-        const c = parseInt(localStorage.getItem(`kcal_${k}`)) || 0;
-        if (m) {
-          html += `<p>${k}: ${m} (${c} kcal)</p>`;
-          total += c; count++;
-        }
+      const keys = Object.keys(recipeDB);
+      if (!keys.length || !ingredients.length) {
+        alert("재료를 입력해 주세요.");
+        return;
       }
-      html += `<hr><p><strong>총 칼로리:</strong> ${total} kcal<br><strong>평균:</strong> ${count ? Math.round(total / count) : 0} kcal</p>`;
-      div.innerHTML = html || '<p>이번 주 기록 없음</p>';
+
+      const randomKey = keys[Math.floor(Math.random() * keys.length)];
+      const recipe = recipeDB[randomKey];
+      if (!recipe || !recipe.steps) {
+        const msg = placeholderDB["레시피 안내"];
+        document.getElementById('result').innerHTML = `
+          <div class="result-card">
+            <strong>레시피 없음</strong><br>
+            <p>${msg.message}</p>
+            <a href="${msg.external}" target="_blank">외부 레시피 검색</a>
+          </div>
+        `;
+        return;
+      }
+
+      const result = `
+        <div class="result-card">
+          <strong>${recipe.menu || randomKey}</strong><br>
+          <div><strong>칼로리:</strong> ${recipe.kcal} kcal</div>
+          <div><strong>조리 방법:</strong> ${recipe.method}</div>
+          <div><strong>재료:</strong> ${recipe.ingredients.join(', ')}</div>
+          <div><strong>조리 순서:</strong><ol>${recipe.steps.map(s => `<li>${s}</li>`).join('')}</ol></div>
+          <div><strong>TIP:</strong> ${recipe.tip}</div>
+        </div>
+      `;
+      document.getElementById('result').innerHTML = result;
     }
 
     loadRecipes();
